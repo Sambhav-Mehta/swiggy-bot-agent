@@ -1,0 +1,19 @@
+{
+  "servers": {
+    "swiggyFood": {
+      "type": "http",
+      "url": "https://mcp.swiggy.com/food",
+      "label": "Swiggy Food Delivery"
+    },
+    "swiggyInstamart": {
+      "type": "http",
+      "url": "https://mcp.swiggy.com/im",
+      "label": "Swiggy Instamart Groceries"
+    },
+    "swiggyDineout": {
+      "type": "http",
+      "url": "https://mcp.swiggy.com/dineout",
+      "label": "Swiggy Dineout Reservations"
+    }
+  }
+}
