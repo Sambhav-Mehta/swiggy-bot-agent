@@ -29,33 +29,67 @@ Integration with supervisor.py:
 
 import os
 import re
+import traceback
+import uuid
 from typing import Literal
 
-from langchain_anthropic import ChatAnthropic
+import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langgraph.types import Command
 
-from agents.supervisor import State
+from agents.supervisor import State, _content_text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Config
+# MCP Connection helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
+_SESSION_TOKEN = os.getenv("SWIGGY_SESSION_TOKEN", "")
+
+
+def _mcp_headers() -> dict[str, str]:
+    """Build headers required by the Anthropic MCP proxy.
+
+    The proxy needs:
+      - Authorization: Bearer <claude.ai OAuth token>
+      - X-Mcp-Client-Session-Id: <any UUID, unique per session>
+    """
+    headers: dict[str, str] = {}
+    if _SESSION_TOKEN:
+        headers["Authorization"] = f"Bearer {_SESSION_TOKEN}"
+    headers["X-Mcp-Client-Session-Id"] = str(uuid.uuid4())
+    return headers
+
+
+def _no_ssl_factory(
+    headers: dict | None = None,
+    timeout: httpx.Timeout | None = None,
+    auth: httpx.Auth | None = None,
+) -> httpx.AsyncClient:
+    """httpx factory: SSL verification disabled (corporate firewall) + MCP defaults."""
+    return httpx.AsyncClient(
+        headers=headers or {},
+        timeout=timeout or httpx.Timeout(30.0, read=300.0),
+        auth=auth,
+        verify=True,
+        follow_redirects=True,
+    )
+
 
 _MCP_CONFIG = {
     "swiggyFood": {
-        "url": os.getenv("SWIGGY_FOOD_MCP_URL", "https://mcp.swiggy.com/food"),
+        "url": os.getenv("SWIGGY_FOOD_MCP_URL", "https://mcp-proxy.anthropic.com/v1/mcp/mcpsrv_01USRnNY7F3XZXVs95w8xAyo"),
         "transport": "streamable_http",
+        "headers": _mcp_headers(),
+        "httpx_client_factory": _no_ssl_factory,
     }
 }
 
-_MODEL = os.getenv("SWIGGY_BOT_MODEL", "claude-sonnet-4-6")
+from agents.supervisor import _build_llm  # noqa: E402
 
-# Temperature 0.1 — deal math must be deterministic, no creative rounding.
-_llm = ChatAnthropic(model=_MODEL, temperature=0.1)
-
+_llm = _build_llm()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # System Prompt — injected as the inner ReAct agent's fixed context
@@ -148,16 +182,17 @@ async def deal_agent_node(state: State) -> Command[Literal["supervisor"]]:
     task = HumanMessage(content=_build_context(state))
 
     try:
-        async with MultiServerMCPClient(_MCP_CONFIG) as mcp:
-            tools = mcp.get_tools()
+        # v0.2+ API: no context manager — call get_tools() directly.
+        client = MultiServerMCPClient(_MCP_CONFIG)
+        tools = await client.get_tools()
 
-            inner_agent = create_react_agent(
-                model=_llm,
-                tools=tools,
-                prompt=_DEAL_SYSTEM,
-            )
+        inner_agent = create_react_agent(
+            model=_llm,
+            tools=tools,
+            prompt=_DEAL_SYSTEM,
+        )
 
-            result = await inner_agent.ainvoke({"messages": [task]})
+        result = await inner_agent.ainvoke({"messages": [task]})
 
         deal_text = _extract_deal_breakdown(result["messages"])
         updated_cart = _parse_cart_update(deal_text, state.get("cart_summary") or {})
@@ -169,9 +204,11 @@ async def deal_agent_node(state: State) -> Command[Literal["supervisor"]]:
         )
 
     except Exception as exc:  # noqa: BLE001
+        print(f"\n[Deal Agent ERROR] {type(exc).__name__}: {exc}", flush=True)
+        traceback.print_exc()
         reply_text = (
-            f"[Deal Agent] Could not reach swiggyFood MCP server: {exc}\n"
-            "Please check connectivity and try again."
+            f"Deal Agent error — {type(exc).__name__}: {exc}\n"
+            "Supervisor: present best available info to the user."
         )
         updated_cart = state.get("cart_summary") or {}
 
@@ -246,7 +283,7 @@ def _extract_health_rec(state: State) -> dict:
     for msg in reversed(state["messages"]):
         if not isinstance(msg, AIMessage):
             continue
-        content = str(msg.content)
+        content = _content_text(msg.content)
         block = re.search(r"HEALTH_RECOMMENDATIONS:(.+?)(?=\n\n|\Z)", content, re.DOTALL)
         if not block:
             continue
@@ -274,7 +311,7 @@ def _extract_deal_breakdown(messages: list) -> str:
     for msg in reversed(messages):
         if not isinstance(msg, AIMessage):
             continue
-        content = str(msg.content)
+        content = _content_text(msg.content)
         match = re.search(r"(DEAL_BREAKDOWN:.+)", content, re.DOTALL)
         if match:
             return match.group(1).strip()

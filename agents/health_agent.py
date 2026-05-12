@@ -21,40 +21,72 @@ Integration with supervisor.py:
 
 import os
 import re
+import traceback
+import uuid
 from typing import Literal
 
-from langchain_anthropic import ChatAnthropic
+import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langgraph.types import Command
 
-from agents.supervisor import State
+from agents.supervisor import State, _content_text
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MCP Connection — mirrors the swiggyFood entry in .vscode/mcp.json
+# MCP Connection helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+_SESSION_TOKEN = os.getenv("SWIGGY_SESSION_TOKEN", "")
+
+
+def _mcp_headers() -> dict[str, str]:
+    """Build headers required by the Anthropic MCP proxy.
+
+    The proxy needs:
+      - Authorization: Bearer <claude.ai OAuth token>
+      - X-Mcp-Client-Session-Id: <any UUID, unique per session>
+    """
+    headers: dict[str, str] = {}
+    if _SESSION_TOKEN:
+        headers["Authorization"] = f"Bearer {_SESSION_TOKEN}"
+    headers["X-Mcp-Client-Session-Id"] = str(uuid.uuid4())
+    return headers
+
+
+def _no_ssl_factory(
+    headers: dict | None = None,
+    timeout: httpx.Timeout | None = None,
+    auth: httpx.Auth | None = None,
+) -> httpx.AsyncClient:
+    """httpx factory: SSL verification disabled (corporate firewall) + MCP defaults."""
+    return httpx.AsyncClient(
+        headers=headers or {},
+        timeout=timeout or httpx.Timeout(30.0, read=300.0),
+        auth=auth,
+        verify=True,
+        follow_redirects=True,
+    )
+
 
 _MCP_CONFIG = {
     "swiggyFood": {
-        "url": os.getenv("SWIGGY_FOOD_MCP_URL", "https://mcp.swiggy.com/food"),
-        # streamable_http is the modern MCP HTTP transport (replaces SSE).
-        # If the server only supports SSE, change this to "sse".
+        "url": os.getenv("SWIGGY_FOOD_MCP_URL", "https://mcp-proxy.anthropic.com/v1/mcp/mcpsrv_01USRnNY7F3XZXVs95w8xAyo"),
         "transport": "streamable_http",
+        "headers": _mcp_headers(),
+        "httpx_client_factory": _no_ssl_factory,
     }
 }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LLM
+# LLM — imported fallback builder from supervisor keeps config in one place
 # ──────────────────────────────────────────────────────────────────────────────
 
-_MODEL = os.getenv("SWIGGY_BOT_MODEL", "claude-sonnet-4-6")
+from agents.supervisor import _build_llm  # noqa: E402
 
-# Lower temperature → more deterministic tool use and consistent filtering.
-_llm = ChatAnthropic(model=_MODEL, temperature=0.2)
-
+_llm = _build_llm()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # System Prompt for the inner ReAct agent
@@ -62,43 +94,36 @@ _llm = ChatAnthropic(model=_MODEL, temperature=0.2)
 # agent never needs to be told twice.
 # ──────────────────────────────────────────────────────────────────────────────
 
-_HEALTH_SYSTEM = SystemMessage(content="""\
+_ADDRESS_ID = os.getenv("SWIGGY_ADDRESS_ID", "339175103")
+
+_HEALTH_SYSTEM = SystemMessage(content=f"""\
 You are the Health Agent for Sambhav Mehta's Swiggy Bot.
 Your sole job: find exactly 3 vegetarian, high-protein dishes from Viman Nagar, Pune.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NON-NEGOTIABLE DIETARY RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. VEGETARIAN ONLY — absolutely no meat, fish, eggs, or meat-based gravies.
+CRITICAL RULE: Every tool call MUST include addressId="{_ADDRESS_ID}" (Viman Nagar, Pune).
+The API will reject every call without it. Do NOT omit it.
+
+NON-NEGOTIABLE DIETARY RULES:
+1. VEGETARIAN ONLY — no meat, fish, eggs, or meat-based gravies.
 2. NO MUSHROOMS — not in the dish, not as a topping, not in any sauce.
-3. Only restaurants rated 4.0 ★ or higher. Filter out anything below.
+3. Only restaurants rated 4.0 or higher.
 4. HIGH-PROTEIN priority: Paneer Tikka, Soya Chaap, Dal Makhani, Rajma,
-   Chhole, Tofu dishes, Paneer Bhurji, etc. Rank by protein density.
+   Chhole, Tofu dishes, Paneer Bhurji. Rank by protein density.
 5. LOW-SUGAR preference: skip desserts, sweet lassi, or sugary mains.
-6. Location: Viman Nagar, Pune — only pull restaurants in this area.
 
-━━━━━━━━━━━━━━━━━━━
-STEP-BY-STEP WORKFLOW
-━━━━━━━━━━━━━━━━━━━
-Step 1 → Call search_restaurants with location = "Viman Nagar, Pune".
-          Request vegetarian filter if the tool supports it.
+STEP-BY-STEP WORKFLOW:
+Step 1 → Call search_restaurants(addressId="{_ADDRESS_ID}", query="high protein veg")
 Step 2 → Discard any restaurant with rating < 4.0. Keep the top 3 by rating.
-Step 3 → For each kept restaurant, call get_restaurant_menu (or search_menu)
-          to retrieve available dishes.
-Step 4 → From each menu, identify high-protein vegetarian dishes.
-          Immediately discard anything containing mushrooms.
-Step 5 → Pick the single best dish from each restaurant (3 dishes total).
-          Rank by: protein content > rating > price (lower is better).
+Step 3 → For each restaurant call get_restaurant_menu(addressId="{_ADDRESS_ID}", restaurantId=<id>).
+Step 4 → From each menu pick the single best high-protein veg dish (no mushrooms).
+Step 5 → Rank: protein content > rating > price (lower better).
 
-━━━━━━━━━━━━━━━━━━━━
-MANDATORY OUTPUT FORMAT
-━━━━━━━━━━━━━━━━━━━━
-End your final response with EXACTLY this block and nothing after it:
+MANDATORY OUTPUT FORMAT — end with EXACTLY this block:
 
 HEALTH_RECOMMENDATIONS:
-1. [Restaurant Name] | [Dish Name] | ₹[Price] | [Why it fits: protein source, macros]
-2. [Restaurant Name] | [Dish Name] | ₹[Price] | [Why it fits: protein source, macros]
-3. [Restaurant Name] | [Dish Name] | ₹[Price] | [Why it fits: protein source, macros]
+1. [Restaurant Name] | [restaurantId] | [Dish Name] | [itemId] | Rs.[Price] | [Why: protein source]
+2. [Restaurant Name] | [restaurantId] | [Dish Name] | [itemId] | Rs.[Price] | [Why: protein source]
+3. [Restaurant Name] | [restaurantId] | [Dish Name] | [itemId] | Rs.[Price] | [Why: protein source]
 """)
 
 
@@ -131,19 +156,17 @@ async def health_agent_node(state: State) -> Command[Literal["supervisor"]]:
     ))
 
     try:
-        async with MultiServerMCPClient(_MCP_CONFIG) as mcp:
-            tools = mcp.get_tools()
+        # v0.2+ API: no context manager — call get_tools() directly.
+        client = MultiServerMCPClient(_MCP_CONFIG)
+        tools = await client.get_tools()
 
-            # Inner ReAct agent: reasons over MCP tools step by step until it
-            # reaches a final answer. The dietary system prompt is injected via
-            # the `prompt` parameter so it's the very first context the LLM sees.
-            inner_agent = create_react_agent(
-                model=_llm,
-                tools=tools,
-                prompt=_HEALTH_SYSTEM,
-            )
+        inner_agent = create_react_agent(
+            model=_llm,
+            tools=tools,
+            prompt=_HEALTH_SYSTEM,
+        )
 
-            result = await inner_agent.ainvoke({"messages": [task]})
+        result = await inner_agent.ainvoke({"messages": [task]})
 
         recommendations = _extract_recommendations(result["messages"])
         reply_text = (
@@ -153,11 +176,11 @@ async def health_agent_node(state: State) -> Command[Literal["supervisor"]]:
         )
 
     except Exception as exc:  # noqa: BLE001
-        # Graceful degradation: surface the error to the Supervisor so it can
-        # inform the user rather than silently hanging.
+        print(f"\n[Health Agent ERROR] {type(exc).__name__}: {exc}", flush=True)
+        traceback.print_exc()
         reply_text = (
-            f"[Health Agent] Could not reach swiggyFood MCP server: {exc}\n"
-            "Please check connectivity or try again."
+            f"Health Agent error — {type(exc).__name__}: {exc}\n"
+            "Supervisor: proceed with whatever data is available."
         )
 
     return Command(
@@ -193,7 +216,7 @@ def _extract_recommendations(messages: list) -> str:
     for msg in reversed(messages):
         if not isinstance(msg, AIMessage):
             continue
-        content = str(msg.content)
+        content = _content_text(msg.content)
         match = re.search(r"(HEALTH_RECOMMENDATIONS:.+)", content, re.DOTALL)
         if match:
             return match.group(1).strip()
