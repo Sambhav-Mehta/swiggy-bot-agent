@@ -28,7 +28,7 @@ from agents.supervisor import State, _build_llm, _content_text
 # ─────────────────────────────────────────────────────────────────────────────
 
 _SESSION_TOKEN = os.getenv("SWIGGY_SESSION_TOKEN", "")
-_ADDRESS_ID    = os.getenv("SWIGGY_ADDRESS_ID", "339175103")
+_ADDRESS_ID    = os.getenv("SWIGGY_ADDRESS_ID", "")  # set SWIGGY_ADDRESS_ID in .env
 
 
 def _mcp_headers() -> dict[str, str]:
@@ -49,10 +49,7 @@ def _no_ssl_factory(headers=None, timeout=None, auth=None):
 
 _MCP_CONFIG = {
     "swiggyFood": {
-        "url": os.getenv(
-            "SWIGGY_FOOD_MCP_URL",
-            "https://mcp-proxy.anthropic.com/v1/mcp/mcpsrv_01USRnNY7F3XZXVs95w8xAyo",
-        ),
+        "url": os.getenv("SWIGGY_FOOD_MCP_URL", ""),  # set SWIGGY_FOOD_MCP_URL in .env
         "transport": "streamable_http",
         "headers": _mcp_headers(),
         "httpx_client_factory": _no_ssl_factory,

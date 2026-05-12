@@ -72,7 +72,7 @@ def _no_ssl_factory(
 
 _MCP_CONFIG = {
     "swiggyFood": {
-        "url": os.getenv("SWIGGY_FOOD_MCP_URL", "https://mcp-proxy.anthropic.com/v1/mcp/mcpsrv_01USRnNY7F3XZXVs95w8xAyo"),
+        "url": os.getenv("SWIGGY_FOOD_MCP_URL", ""),  # set SWIGGY_FOOD_MCP_URL in .env
         "transport": "streamable_http",
         "headers": _mcp_headers(),
         "httpx_client_factory": _no_ssl_factory,
@@ -94,7 +94,7 @@ _llm = _build_llm()
 # agent never needs to be told twice.
 # ──────────────────────────────────────────────────────────────────────────────
 
-_ADDRESS_ID = os.getenv("SWIGGY_ADDRESS_ID", "339175103")
+_ADDRESS_ID = os.getenv("SWIGGY_ADDRESS_ID", "")  # set SWIGGY_ADDRESS_ID in .env
 
 _HEALTH_SYSTEM = SystemMessage(content=f"""\
 You are the Health Agent for Sambhav Mehta's Swiggy Bot.
