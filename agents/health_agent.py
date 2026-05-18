@@ -96,11 +96,14 @@ _llm = _build_llm()
 
 _ADDRESS_ID = os.getenv("SWIGGY_ADDRESS_ID", "")  # set SWIGGY_ADDRESS_ID in .env
 
-_HEALTH_SYSTEM = SystemMessage(content=f"""\
-You are the Health Agent for Sambhav Mehta's Swiggy Bot.
-Your sole job: find exactly 3 vegetarian, high-protein dishes from Viman Nagar, Pune.
 
-CRITICAL RULE: Every tool call MUST include addressId="{_ADDRESS_ID}" (Viman Nagar, Pune).
+def _build_health_system(name: str, address_id: str) -> SystemMessage:
+    """Build the inner-agent system prompt with per-user name and address ID."""
+    return SystemMessage(content=f"""\
+You are the Health Agent for {name}'s Swiggy Bot.
+Your sole job: find exactly 3 vegetarian, high-protein dishes near the user's location.
+
+CRITICAL RULE: Every tool call MUST include addressId="{address_id}".
 The API will reject every call without it. Do NOT omit it.
 
 NON-NEGOTIABLE DIETARY RULES:
@@ -112,9 +115,9 @@ NON-NEGOTIABLE DIETARY RULES:
 5. LOW-SUGAR preference: skip desserts, sweet lassi, or sugary mains.
 
 STEP-BY-STEP WORKFLOW:
-Step 1 → Call search_restaurants(addressId="{_ADDRESS_ID}", query="high protein veg")
+Step 1 → Call search_restaurants(addressId="{address_id}", query="high protein veg")
 Step 2 → Discard any restaurant with rating < 4.0. Keep the top 3 by rating.
-Step 3 → For each restaurant call get_restaurant_menu(addressId="{_ADDRESS_ID}", restaurantId=<id>).
+Step 3 → For each restaurant call get_restaurant_menu(addressId="{address_id}", restaurantId=<id>).
 Step 4 → From each menu pick the single best high-protein veg dish (no mushrooms).
 Step 5 → Rank: protein content > rating > price (lower better).
 
@@ -145,25 +148,28 @@ async def health_agent_node(state: State) -> Command[Literal["supervisor"]]:
     6. Returns Command(goto="supervisor") so the Supervisor can show the user
        the picks and decide whether to send them to the Deal Agent next.
     """
-    # Pull the most recent human message as the task context for the inner agent
+    persona     = state.get("user_persona") or {}
+    name        = persona.get("name", "the user")
+    address_id  = persona.get("address_id") or _ADDRESS_ID or ""
+    location    = persona.get("location", "their area")
+
     user_request = _latest_human_message(state)
 
     task = HumanMessage(content=(
         f"User request: '{user_request}'\n\n"
-        "Search for the best high-protein vegetarian dishes available right now "
-        "in Viman Nagar, Pune. Apply all dietary and rating rules from your "
+        f"Search for the best high-protein vegetarian dishes available right now "
+        f"near {location}. Apply all dietary and rating rules from your "
         "instructions and return exactly 3 recommendations in the required format."
     ))
 
     try:
-        # v0.2+ API: no context manager — call get_tools() directly.
         client = MultiServerMCPClient(_MCP_CONFIG)
         tools = await client.get_tools()
 
         inner_agent = create_react_agent(
             model=_llm,
             tools=tools,
-            prompt=_HEALTH_SYSTEM,
+            prompt=_build_health_system(name, address_id),
         )
 
         result = await inner_agent.ainvoke({"messages": [task]})

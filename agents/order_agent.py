@@ -62,33 +62,35 @@ _llm = _build_llm()
 # System Prompt
 # ─────────────────────────────────────────────────────────────────────────────
 
-_ORDER_SYSTEM = SystemMessage(content=f"""\
-You are the Order Agent for Sambhav's Swiggy Bot.
+def _build_order_system(address_id: str) -> SystemMessage:
+    """Build the inner-agent system prompt with the per-user address ID."""
+    return SystemMessage(content=f"""\
+You are the Order Agent for this Swiggy Bot session.
 Your job: assemble the cart and produce an order preview. Do NOT call place_food_order.
 
-CRITICAL: Pass addressId="{_ADDRESS_ID}" to EVERY tool call or it will fail.
+CRITICAL: Pass addressId="{address_id}" to EVERY tool call or it will fail.
 
 STEP-BY-STEP WORKFLOW:
-Step 1 → Call flush_food_cart(addressId="{_ADDRESS_ID}") to clear stale items.
+Step 1 → Call flush_food_cart(addressId="{address_id}") to clear stale items.
 
 Step 2 → If restaurantId and itemId are provided in the task, skip this step.
-          Otherwise call search_restaurants(addressId="{_ADDRESS_ID}", query=<restaurant name>)
-          then search_menu(addressId="{_ADDRESS_ID}", restaurantId=<id>, query=<dish name>)
+          Otherwise call search_restaurants(addressId="{address_id}", query=<restaurant name>)
+          then search_menu(addressId="{address_id}", restaurantId=<id>, query=<dish name>)
           to resolve the IDs.
 
-Step 3 → Call update_food_cart(addressId="{_ADDRESS_ID}", restaurantId=<id>,
+Step 3 → Call update_food_cart(addressId="{address_id}", restaurantId=<id>,
           items=[{{"itemId": <id>, "quantity": 1}}])
 
 Step 4 → COUPON HANDLING (very important):
           - If the task says "SKIP COUPON" → skip this step entirely.
           - If a coupon code is provided, call
-            apply_food_coupon(addressId="{_ADDRESS_ID}", couponCode=<code>)
+            apply_food_coupon(addressId="{address_id}", couponCode=<code>)
           - If apply_food_coupon returns ANY error (expired, not found, invalid):
             * Do NOT retry or use a different coupon.
             * Stop immediately and output COUPON_FAILED block (see format below).
             * Do NOT output ORDER_SUMMARY.
 
-Step 5 → Call get_food_cart(addressId="{_ADDRESS_ID}") to read the final cart.
+Step 5 → Call get_food_cart(addressId="{address_id}") to read the final cart.
 
 Step 6 → Output ORDER_SUMMARY block. Do NOT call place_food_order.
 
@@ -109,7 +111,7 @@ If cart built successfully (no coupon, or coupon applied):
 ORDER_SUMMARY:
 Restaurant   : [name]
 Dish         : [item name]
-Address      : Viman Nagar, Pune
+Address      : [user's delivery address]
 MRP          : Rs.[amount]
 Coupon       : [code or NONE]
 Discount     : Rs.[amount]
@@ -124,7 +126,10 @@ Status       : DRY-RUN COMPLETE — not placed yet
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def order_agent_node(state: State) -> Command[Literal["supervisor"]]:
-    task_text = _build_task(state)
+    persona    = state.get("user_persona") or {}
+    address_id = persona.get("address_id") or _ADDRESS_ID or ""
+
+    task_text = _build_task(state, address_id)
     task = HumanMessage(content=task_text)
     print(f"\n[Order Agent] Task:\n{task_text}\n", flush=True)
 
@@ -133,16 +138,13 @@ async def order_agent_node(state: State) -> Command[Literal["supervisor"]]:
         tools = await client.get_tools()
         print(f"[Order Agent] Tools available: {[t.name for t in tools]}", flush=True)
 
-        # create_react_agent doesn't accept handle_tool_errors directly in this
-        # version. Build a ToolNode with handle_tool_errors=True and pass it
-        # as the tools argument. This converts ToolException (thrown by MCP
-        # tools on API errors like "Coupon not eligible") into a ToolMessage
-        # so the LLM sees the error and outputs COUPON_FAILED instead of crashing.
+        # ToolNode with handle_tool_errors=True converts ToolException into a
+        # ToolMessage so the LLM sees coupon errors and outputs COUPON_FAILED.
         tool_node = ToolNode(tools, handle_tool_errors=True)
         inner_agent = create_react_agent(
             model=_llm,
             tools=tool_node,
-            prompt=_ORDER_SYSTEM,
+            prompt=_build_order_system(address_id),
         )
         result = await inner_agent.ainvoke({"messages": [task]})
 
@@ -187,7 +189,7 @@ async def order_agent_node(state: State) -> Command[Literal["supervisor"]]:
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_task(state: State) -> str:
+def _build_task(state: State, address_id: str = "") -> str:
     """Build the task string from cart_summary or message history."""
     cart = state.get("cart_summary") or {}
     lines = ["Build the cart for this order:"]
@@ -226,7 +228,7 @@ def _build_task(state: State) -> str:
     elif coupon_code:
         lines.append(f"Coupon code: {coupon_code}")
 
-    lines.append(f"Address ID: {_ADDRESS_ID} (Viman Nagar, Pune — use for every tool call)")
+    lines.append(f"Address ID: {address_id} — use for every tool call")
     return "\n".join(lines)
 
 

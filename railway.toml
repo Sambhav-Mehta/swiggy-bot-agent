@@ -1,0 +1,10 @@
+[build]
+# Build the React frontend first, then Railway starts the FastAPI server.
+# FastAPI serves the built frontend/dist as static files.
+buildCommand = "cd frontend && npm install && npm run build && cd .."
+
+[deploy]
+startCommand = "uvicorn backend.api:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"

@@ -1,17 +1,14 @@
-# AI Frameworks
+# AI / LangGraph pipeline
 langgraph
 langchain-core
 langchain-google-genai
 langchain-mcp-adapters
 
-# API & Web Server
+# Web server
 fastapi
-uvicorn
+uvicorn[standard]
 python-dotenv
+httpx
 
-# Frontend & UI
-streamlit
-
-# Utilities
+# Data validation
 pydantic
-asyncio
