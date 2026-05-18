@@ -1,0 +1,8 @@
+{
+  "providers": {
+    "node": {
+      "version": "20"
+    },
+    "python": {}
+  }
+}
