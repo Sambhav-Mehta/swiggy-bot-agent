@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { EMPTY_PERSONA } from '../utils/persona'
 
-export default function PersonaForm({ onSubmit }) {
-  const [form, setForm] = useState(EMPTY_PERSONA)
+export default function PersonaForm({ onSubmit, initialValues }) {
+  const [form, setForm] = useState(() => ({ ...EMPTY_PERSONA, ...(initialValues || {}) }))
   const [error, setError] = useState('')
 
   const set = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }))

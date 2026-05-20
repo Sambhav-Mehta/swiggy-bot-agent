@@ -120,49 +120,48 @@ async def chat(request: ChatRequest):
 
     async def event_stream():
         try:
-            supervisor_buffer = ""   # accumulate supervisor tokens across chunks
+            emitted_agents: set[str] = set()
 
             async for event in swiggy_graph.astream_events(
                 initial_state, config, version="v2"
             ):
                 kind = event["event"]
                 name = event.get("name", "")
+                # langgraph_node in metadata is the reliable way to know which
+                # graph node is currently executing in LangGraph v2 events.
+                node = event.get("metadata", {}).get("langgraph_node", "")
 
-                # ── agent start → show thinking badge ──────────────────────
+                # ── specialist agent entered → show thinking badge once ──────
                 if kind == "on_chain_start" and name in _AGENT_LABELS:
-                    yield _sse({"type": "thinking", "agent": name,
-                                "label": _AGENT_LABELS[name]})
+                    if name not in emitted_agents:
+                        emitted_agents.add(name)
+                        yield _sse({"type": "thinking", "agent": name,
+                                    "label": _AGENT_LABELS[name]})
 
-                # ── supervisor LLM tokens → stream text ────────────────────
-                elif kind == "on_chat_model_stream":
-                    # Only stream tokens that come from the supervisor node,
-                    # not from inner ReAct agents (health/deal/order).
-                    tags = event.get("tags", [])
-                    if any("supervisor" in t for t in tags) or not any(
-                        a in tags for a in ("health_agent", "deal_agent", "order_agent")
-                    ):
-                        chunk = event["data"].get("chunk")
-                        if chunk:
-                            text = _content_text(chunk.content)
-                            # Strip partial routing JSON that accumulates
-                            text = _ROUTING_RE.sub("", text)
-                            if text:
-                                supervisor_buffer += text
-                                yield _sse({"type": "text", "text": text})
+                # ── supervisor LLM tokens → stream character by character ────
+                # Filter by langgraph_node so inner ReAct agent tokens (from
+                # health/deal/order) are never leaked to the user.
+                elif kind == "on_chat_model_stream" and node == "supervisor":
+                    chunk = event["data"].get("chunk")
+                    if chunk:
+                        text = _content_text(chunk.content)
+                        text = _ROUTING_RE.sub("", text).strip()
+                        if text:
+                            yield _sse({"type": "text", "text": text})
 
-            # ── done: yield clean final message ────────────────────────────
             yield _sse({"type": "done"})
 
         except Exception as exc:  # noqa: BLE001
             yield _sse({"type": "error", "text": str(exc)})
 
+    # Note: do NOT add Access-Control-Allow-Origin here — CORSMiddleware
+    # already adds it. Duplicate headers cause browsers to reject the stream.
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control":               "no-cache",
-            "X-Accel-Buffering":           "no",   # disable nginx buffering
-            "Access-Control-Allow-Origin": "*",
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",   # prevent nginx from buffering SSE
         },
     )
 
