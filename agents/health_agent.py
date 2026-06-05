@@ -22,64 +22,17 @@ Integration with supervisor.py:
 import os
 import re
 import traceback
-import uuid
 from typing import Literal
 
 import agents.schema_fix  # noqa: F401 — patches Gemini schema validator for integer enums
 
-import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langgraph.types import Command
 
 from agents.supervisor import State, _content_text
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# MCP Connection helpers
-# ──────────────────────────────────────────────────────────────────────────────
-
-_SESSION_TOKEN = os.getenv("SWIGGY_SESSION_TOKEN", "")
-
-
-def _mcp_headers() -> dict[str, str]:
-    """Build headers required by the Anthropic MCP proxy.
-
-    The proxy needs:
-      - Authorization: Bearer <claude.ai OAuth token>
-      - X-Mcp-Client-Session-Id: <any UUID, unique per session>
-    """
-    headers: dict[str, str] = {}
-    if _SESSION_TOKEN:
-        headers["Authorization"] = f"Bearer {_SESSION_TOKEN}"
-    headers["X-Mcp-Client-Session-Id"] = str(uuid.uuid4())
-    return headers
-
-
-def _no_ssl_factory(
-    headers: dict | None = None,
-    timeout: httpx.Timeout | None = None,
-    auth: httpx.Auth | None = None,
-) -> httpx.AsyncClient:
-    """httpx factory: SSL verification disabled (corporate firewall) + MCP defaults."""
-    return httpx.AsyncClient(
-        headers=headers or {},
-        timeout=timeout or httpx.Timeout(30.0, read=300.0),
-        auth=auth,
-        verify=True,
-        follow_redirects=True,
-    )
-
-
-_MCP_CONFIG = {
-    "swiggyFood": {
-        "url": os.getenv("SWIGGY_FOOD_MCP_URL", ""),  # set SWIGGY_FOOD_MCP_URL in .env
-        "transport": "streamable_http",
-        "headers": _mcp_headers(),
-        "httpx_client_factory": _no_ssl_factory,
-    }
-}
+from agents.mcp_config import config_from_state
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -165,7 +118,7 @@ async def health_agent_node(state: State) -> Command[Literal["supervisor"]]:
     ))
 
     try:
-        client = MultiServerMCPClient(_MCP_CONFIG)
+        client = MultiServerMCPClient(config_from_state(state))
         tools = await client.get_tools()
 
         inner_agent = create_react_agent(

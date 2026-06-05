@@ -11,6 +11,7 @@ from typing import Optional
 
 from backend.db.connection import get_supabase_client
 from backend.db.models import UserProfileIn, AddressIn, OrderIn
+from backend.swiggy.crypto import encrypt, decrypt
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -168,3 +169,52 @@ def get_chat_sessions(user_id: str) -> list[dict]:
         .execute()
     )
     return res.data or []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Swiggy connections (Phase 2 — per-user MCP tokens)
+# Tokens are encrypted at rest via backend.swiggy.crypto.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def upsert_swiggy_connection(user_id: str, session_token: str, mcp_server_url: str) -> dict:
+    """Store (encrypted) the user's own Swiggy MCP token + URL."""
+    sb = get_supabase_client()
+    res = (
+        sb.table("swiggy_connections")
+        .upsert(
+            {
+                "user_id": user_id,
+                "session_token": encrypt(session_token),
+                "mcp_server_url": mcp_server_url,
+                "connected_at": "now()",
+            },
+            on_conflict="user_id",
+        )
+        .execute()
+    )
+    return res.data[0] if res.data else {}
+
+
+def get_swiggy_connection(user_id: str) -> Optional[dict]:
+    """
+    Return the user's decrypted Swiggy connection, or None if not connected.
+    Shape: {"session_token": <plain>, "mcp_server_url": <url>, "connected_at": ...}
+    """
+    sb = get_supabase_client()
+    res = (
+        sb.table("swiggy_connections")
+        .select("*")
+        .eq("user_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not res.data:
+        return None
+    row = res.data
+    row["session_token"] = decrypt(row.get("session_token", ""))
+    return row
+
+
+def delete_swiggy_connection(user_id: str) -> None:
+    sb = get_supabase_client()
+    sb.table("swiggy_connections").delete().eq("user_id", user_id).execute()

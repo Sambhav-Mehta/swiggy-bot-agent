@@ -10,12 +10,10 @@ Does NOT call place_food_order (simulate mode).
 import os
 import re
 import traceback
-import uuid
 from typing import Literal
 
 import agents.schema_fix  # noqa: F401 — patches Gemini schema validator for integer enums
 
-import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
@@ -23,40 +21,14 @@ from langgraph.types import Command
 
 from langgraph.prebuilt.tool_node import ToolNode
 from agents.supervisor import State, _build_llm, _content_text
+from agents.mcp_config import config_from_state
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MCP helpers
+# Config
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SESSION_TOKEN = os.getenv("SWIGGY_SESSION_TOKEN", "")
-_ADDRESS_ID    = os.getenv("SWIGGY_ADDRESS_ID", "")  # set SWIGGY_ADDRESS_ID in .env
-
-
-def _mcp_headers() -> dict[str, str]:
-    h: dict[str, str] = {}
-    if _SESSION_TOKEN:
-        h["Authorization"] = f"Bearer {_SESSION_TOKEN}"
-    h["X-Mcp-Client-Session-Id"] = str(uuid.uuid4())
-    return h
-
-
-def _no_ssl_factory(headers=None, timeout=None, auth=None):
-    return httpx.AsyncClient(
-        headers=headers or {},
-        timeout=timeout or httpx.Timeout(30.0, read=300.0),
-        auth=auth, verify=True, follow_redirects=True,
-    )
-
-
-_MCP_CONFIG = {
-    "swiggyFood": {
-        "url": os.getenv("SWIGGY_FOOD_MCP_URL", ""),  # set SWIGGY_FOOD_MCP_URL in .env
-        "transport": "streamable_http",
-        "headers": _mcp_headers(),
-        "httpx_client_factory": _no_ssl_factory,
-    }
-}
+_ADDRESS_ID = os.getenv("SWIGGY_ADDRESS_ID", "")  # fallback address (per-user comes from persona)
 
 _llm = _build_llm()
 
@@ -136,7 +108,7 @@ async def order_agent_node(state: State) -> Command[Literal["supervisor"]]:
     print(f"\n[Order Agent] Task:\n{task_text}\n", flush=True)
 
     try:
-        client = MultiServerMCPClient(_MCP_CONFIG)
+        client = MultiServerMCPClient(config_from_state(state))
         tools = await client.get_tools()
         print(f"[Order Agent] Tools available: {[t.name for t in tools]}", flush=True)
 

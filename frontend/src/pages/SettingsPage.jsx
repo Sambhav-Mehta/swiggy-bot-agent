@@ -9,14 +9,17 @@ export default function SettingsPage() {
   const [addresses, setAddresses] = useState([])
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const [swiggy, setSwiggy] = useState({ connected: false })
 
   useEffect(() => {
     Promise.all([
       api.get('/api/profile'),
       api.get('/api/addresses'),
-    ]).then(([p, a]) => {
+      api.get('/api/swiggy/status'),
+    ]).then(([p, a, s]) => {
       setProfile(p.data)
       setAddresses(a.data)
+      setSwiggy(s.data)
     }).catch(() => {})
   }, [])
 
@@ -97,6 +100,9 @@ export default function SettingsPage() {
           </button>
         </Section>
 
+        {/* Swiggy connection */}
+        <SwiggySection swiggy={swiggy} setSwiggy={setSwiggy} />
+
         {/* Account */}
         <Section title="Account">
           <p className="text-sm text-slate-400">{user?.email}</p>
@@ -107,6 +113,96 @@ export default function SettingsPage() {
         </Section>
       </div>
     </div>
+  )
+}
+
+function SwiggySection({ swiggy, setSwiggy }) {
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ session_token: '', mcp_server_url: '' })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const connect = async () => {
+    setErr(''); setBusy(true)
+    try {
+      const { data } = await api.post('/api/swiggy/connect', form)
+      setSwiggy({ connected: true, mcp_server_url: form.mcp_server_url })
+      setShowForm(false)
+      setForm({ session_token: '', mcp_server_url: '' })
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Connection failed.')
+    } finally { setBusy(false) }
+  }
+
+  const disconnect = async () => {
+    setBusy(true)
+    try {
+      await api.delete('/api/swiggy/disconnect')
+      setSwiggy({ connected: false })
+    } catch {} finally { setBusy(false) }
+  }
+
+  return (
+    <Section title="Swiggy Account">
+      {swiggy.connected ? (
+        <>
+          <div className="flex items-center gap-2 text-sm text-green-400">
+            <span className="w-2 h-2 rounded-full bg-green-400" />
+            Connected — orders use your own Swiggy account
+          </div>
+          <button onClick={disconnect} disabled={busy}
+            className="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium py-2.5 rounded-xl transition-all mt-2">
+            {busy ? 'Disconnecting…' : 'Disconnect'}
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-slate-400">
+            Not connected. The bot uses a shared demo account.
+            Connect your own Swiggy to order from your account.
+          </p>
+
+          {!showForm ? (
+            <button onClick={() => setShowForm(true)}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold py-2.5 rounded-xl transition-all mt-2">
+              Connect My Swiggy
+            </button>
+          ) : (
+            <div className="space-y-3 mt-2">
+              <div className="bg-slate-900/60 border border-slate-700 rounded-lg p-3 text-xs text-slate-400 leading-relaxed">
+                <strong className="text-slate-300">How to get these:</strong>
+                <ol className="list-decimal ml-4 mt-1 space-y-1">
+                  <li>Open <span className="text-orange-400">claude.ai</span> → Settings → Connectors</li>
+                  <li>Connect <strong>Swiggy Food</strong> if not already</li>
+                  <li>Copy your MCP server URL and access token</li>
+                </ol>
+              </div>
+              <Label>Swiggy MCP Server URL</Label>
+              <Input value={form.mcp_server_url}
+                onChange={e => setForm(f => ({ ...f, mcp_server_url: e.target.value }))}
+                placeholder="https://mcp-proxy.anthropic.com/v1/mcp/mcpsrv_..." />
+              <Label>Access Token</Label>
+              <Input value={form.session_token}
+                onChange={e => setForm(f => ({ ...f, session_token: e.target.value }))}
+                placeholder="sk-ant-oat01-..." />
+
+              {err && <p className="text-red-400 text-xs">{err}</p>}
+
+              <div className="flex gap-2">
+                <button onClick={connect} disabled={busy || !form.session_token || !form.mcp_server_url}
+                  className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-all">
+                  {busy ? 'Verifying…' : 'Verify & Connect'}
+                </button>
+                <button onClick={() => { setShowForm(false); setErr('') }}
+                  className="px-4 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-xl transition-all">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Section>
   )
 }
 

@@ -95,3 +95,18 @@ class OrderOut(OrderIn):
     id: str
     user_id: str
     created_at: str
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Swiggy connection (Phase 2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SwiggyConnectIn(BaseModel):
+    session_token: str                     # user's claude.ai OAuth token
+    mcp_server_url: str                     # user's Swiggy Food MCP proxy URL
+
+
+class SwiggyStatusOut(BaseModel):
+    connected: bool
+    mcp_server_url: Optional[str] = None
+    connected_at: Optional[str] = None

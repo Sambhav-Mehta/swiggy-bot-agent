@@ -57,6 +57,12 @@ class State(TypedDict):
     # Schema: {"items": [...], "total_mrp": 0, "discount": 0, "payable": 0}
     cart_summary: dict
 
+    # Per-user Swiggy credentials (Phase 2). Injected by the backend from the
+    # swiggy_connections table. Empty string → agents fall back to the shared
+    # SWIGGY_SESSION_TOKEN / SWIGGY_FOOD_MCP_URL env vars.
+    swiggy_token: str
+    swiggy_mcp_url: str
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. Persona Loader
