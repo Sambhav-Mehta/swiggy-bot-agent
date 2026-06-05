@@ -12,3 +12,13 @@ httpx
 
 # Data validation
 pydantic
+
+# Database (Supabase + SQLAlchemy)
+supabase
+sqlalchemy
+psycopg2-binary
+
+# Auth
+python-jose[cryptography]
+passlib[bcrypt]
+cryptography

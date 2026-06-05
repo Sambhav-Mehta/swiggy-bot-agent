@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import MessageBubble from './MessageBubble'
 import { useChat } from '../hooks/useChat'
+import { useAuth } from '../contexts/AuthContext'
 
-export default function ChatWindow({ persona, onEditPersona, onNewChat: onNewChatProp }) {
-  const { messages, sendMessage, isThinking, currentAgent, resetSession } = useChat(persona)
+export default function ChatWindow() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const { messages, sendMessage, isThinking, currentAgent, resetSession } = useChat()
   const [input, setInput] = useState('')
   const bottomRef = useRef(null)
 
@@ -26,10 +30,7 @@ export default function ChatWindow({ persona, onEditPersona, onNewChat: onNewCha
     }
   }
 
-  const handleNewChat = () => {
-    resetSession()
-    onNewChatProp?.()
-  }
+  const handleNewChat = () => resetSession()
 
   return (
     <div className="flex flex-col h-screen bg-slate-900">
@@ -39,15 +40,15 @@ export default function ChatWindow({ persona, onEditPersona, onNewChat: onNewCha
           <span className="text-xl">🍔</span>
           <div>
             <div className="text-white font-semibold text-sm leading-tight">Swiggy Bot</div>
-            <div className="text-slate-400 text-xs">{persona.name} · {persona.location}</div>
+            <div className="text-slate-400 text-xs">{user?.name || 'Guest'}</div>
           </div>
         </div>
         <div className="flex gap-2">
           <button
-            onClick={onEditPersona}
+            onClick={() => navigate('/settings')}
             className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 transition-colors"
           >
-            Edit Profile
+            Settings
           </button>
           <button
             onClick={handleNewChat}
