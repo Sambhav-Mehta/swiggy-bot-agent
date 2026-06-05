@@ -13,6 +13,8 @@ import traceback
 import uuid
 from typing import Literal
 
+import agents.schema_fix  # noqa: F401 — patches Gemini schema validator for integer enums
+
 import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient

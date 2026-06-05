@@ -11,7 +11,7 @@ python-dotenv
 httpx
 
 # Data validation
-pydantic
+pydantic[email]
 
 # Database (Supabase + SQLAlchemy)
 supabase
