@@ -131,7 +131,7 @@ async def health_agent_node(state: State) -> Command[Literal["supervisor"]]:
 
         recommendations = _extract_recommendations(result["messages"])
         reply_text = (
-            "Health Agent done. Top 3 high-protein veg picks from Viman Nagar:\n\n"
+            "Health Agent done. Top 3 high-protein veg picks near you:\n\n"
             f"{recommendations}\n\n"
             "Handing back to Supervisor — they'll lock in the best deal next."
         )

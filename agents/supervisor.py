@@ -164,7 +164,7 @@ STEP 4 — User replies with a choice → confirm the pick, then route to order_
 STEP 5 — After order_agent returns:
           a) ORDER_SUMMARY → show the preview clearly. Then add:
              "──────────────────────────────
-              Delivery address : Viman Nagar, Pune (Row house 2, Gera Terraces 2)
+              Delivery address : [user's default delivery address]
               Payment method   : UPI / Card / COD?
               ──────────────────────────────
               Payment method batao — order confirm kar dein?"
@@ -184,7 +184,7 @@ STEP 7 — User provides payment method (UPI / Card / COD / Swiggy One) after
           Restaurant : [name from ORDER_SUMMARY]
           Dish       : [dish from ORDER_SUMMARY]
           Payable    : [amount from ORDER_SUMMARY]
-          Address    : Viman Nagar, Pune
+          Address    : [user's delivery address]
           Payment    : [what user chose]
           Tracking ID: SIM-[random 8 chars]
           ─────────────────────────────────────────

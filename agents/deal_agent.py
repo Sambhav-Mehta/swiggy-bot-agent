@@ -14,7 +14,7 @@ NOTE — on 'get_payment_offers':
     'payment_offers' section of the response. This agent uses that single tool.
 
 Inner agent workflow:
-    get_addresses (auto-select Viman Nagar address)
+    get_addresses (auto-select the user's default address)
         → fetch_food_coupons(restaurantId, addressId)
         → parse best_coupons + payment_offers sections
         → compute coupon_saving, HDFC saving, SBI saving
@@ -50,7 +50,7 @@ _llm = _build_llm()
 # ─────────────────────────────────────────────────────────────────────────────
 
 _DEAL_SYSTEM = SystemMessage(content="""\
-You are the Deal Agent for Sambhav Mehta's Swiggy Bot.
+You are the Deal Agent for the user's Swiggy Bot.
 Your sole job: find the maximum discount on the current order.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -63,8 +63,9 @@ SAVED CARDS — CHECK THESE ONLY
 STEP-BY-STEP WORKFLOW
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Step 1 — Call get_addresses.
-           Do NOT wait for user confirmation — automatically pick the address
-           that matches "Viman Nagar, Pune". Note its addressId.
+           Do NOT wait for user confirmation — automatically pick the user's
+           default/primary address (or the delivery location given in the task).
+           Note its addressId.
 
 Step 2 — Call fetch_food_coupons using:
              restaurantId  = the ID provided in the task (or find it via
@@ -194,6 +195,9 @@ def _build_context(state: State) -> str:
     restaurant_name = cart.get("restaurant_name", "")
     mrp             = cart.get("total_mrp", 0)
 
+    # Pull the delivery city from the user's persona (DB-backed); generic fallback.
+    city = (state.get("user_persona") or {}).get("location", "") or "the user's city"
+
     # Fill gaps from Health Agent's structured recommendation
     health = _extract_health_rec(state)
     if not restaurant_name:
@@ -212,11 +216,11 @@ def _build_context(state: State) -> str:
         )
     else:
         lines.append(
-            "Restaurant not yet identified — search Viman Nagar, Pune to find it."
+            f"Restaurant not yet identified — search {city} to find it."
         )
 
     lines.append(f"Order MRP: ₹{mrp}" if mrp else "Order MRP: use the price from the menu.")
-    lines.append("Delivery location: Viman Nagar, Pune.")
+    lines.append(f"Delivery location: {city}.")
     lines.append(
         "Specifically find HDFC Swiggy Credit Card and SBI Cashback Credit Card "
         "entries in the payment_offers section of the fetch_food_coupons response."

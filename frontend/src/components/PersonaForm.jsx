@@ -33,8 +33,8 @@ export default function PersonaForm({ onSubmit, initialValues }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Required fields */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Your Name *" value={form.name} onChange={set('name')} placeholder="Sambhav Mehta" />
-            <Field label="Delivery City *" value={form.location} onChange={set('location')} placeholder="Viman Nagar, Pune" />
+            <Field label="Your Name *" value={form.name} onChange={set('name')} placeholder="e.g. Aarav Sharma" />
+            <Field label="Delivery City *" value={form.location} onChange={set('location')} placeholder="e.g. Pune" />
           </div>
 
           <Field label="Dietary Goals" value={form.diet_goals} onChange={set('diet_goals')} placeholder="High-protein, low-sugar" />

@@ -50,10 +50,10 @@ export default function Step3Address({ data, onFinish, onBack, saving }) {
         </div>
 
         <Field label="Full Address *" value={form.full_address} onChange={set('full_address')}
-          placeholder="Row House 2, Gera Terraces II, Viman Nagar" />
+          placeholder="Flat / House no., Building, Area" />
         <div className="grid grid-cols-2 gap-3">
-          <Field label="City" value={form.city} onChange={set('city')} placeholder="Pune" />
-          <Field label="Pincode" value={form.pincode} onChange={set('pincode')} placeholder="411014" />
+          <Field label="City" value={form.city} onChange={set('city')} placeholder="Your city" />
+          <Field label="Pincode" value={form.pincode} onChange={set('pincode')} placeholder="000000" />
         </div>
 
         {error && <p className="text-red-400 text-xs">{error}</p>}

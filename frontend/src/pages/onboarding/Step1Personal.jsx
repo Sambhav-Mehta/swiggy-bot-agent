@@ -20,9 +20,9 @@ export default function Step1Personal({ data, onNext }) {
   return (
     <Card title="Tell us about yourself" subtitle="We'll personalize your experience.">
       <form onSubmit={handleNext} className="space-y-4">
-        <Field label="Full Name *" value={form.name} onChange={set('name')} placeholder="Sambhav Mehta" />
+        <Field label="Full Name *" value={form.name} onChange={set('name')} placeholder="e.g. Aarav Sharma" />
         <Field label="Phone (optional)" value={form.phone} onChange={set('phone')} placeholder="+91 9876543210" type="tel" />
-        <Field label="Delivery City *" value={form.city} onChange={set('city')} placeholder="Viman Nagar, Pune" />
+        <Field label="Delivery City *" value={form.city} onChange={set('city')} placeholder="e.g. Pune" />
         {error && <p className="text-red-400 text-xs">{error}</p>}
         <Btn>Next →</Btn>
       </form>

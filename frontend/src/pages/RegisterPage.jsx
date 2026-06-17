@@ -37,7 +37,7 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Field label="Full Name" type="text" value={form.name} onChange={set('name')} placeholder="Sambhav Mehta" />
+          <Field label="Full Name" type="text" value={form.name} onChange={set('name')} placeholder="e.g. Aarav Sharma" />
           <Field label="Email" type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" />
           <Field label="Password" type="password" value={form.password} onChange={set('password')} placeholder="Min. 6 characters" />
           <Field label="Confirm Password" type="password" value={form.confirm} onChange={set('confirm')} placeholder="••••••••" />

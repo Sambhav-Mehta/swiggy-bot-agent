@@ -164,16 +164,17 @@ shared demo account is used automatically. This is documented inline in the UI.
 ```
 GOOGLE_API_KEY=...
 SWIGGY_BOT_MODELS=gemini-1.5-flash,gemini-1.5-flash-8b,gemini-2.0-flash,gemini-2.5-flash  # 1.5-flash FIRST
-SWIGGY_ADDRESS_ID=339175103          # fallback default (Viman Nagar)
-SWIGGY_FOOD_MCP_URL=https://mcp-proxy.anthropic.com/v1/mcp/mcpsrv_01USRnNY7F3XZXVs95w8xAyo
+SWIGGY_ADDRESS_ID=<your_address_id>          # fallback default
+SWIGGY_FOOD_MCP_URL=https://mcp-proxy.anthropic.com/v1/mcp/<your_mcpsrv_id>
 SWIGGY_SESSION_TOKEN=sk-ant-oat01-...  # SHARED token, refreshed from ~/.claude/.credentials.json
-SUPABASE_URL=https://tdiivvfvwvvxuvlpxfdk.supabase.co
+SUPABASE_URL=https://<your_project>.supabase.co
 SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_KEY=eyJ...
 # SUPABASE_JWT_SECRET — no longer needed (SDK validates)
 GITHUB_TOKEN=ghp_...
-GITHUB_REPO=Sambhav-Mehta/swiggy-bot-agent
-# Phase 2 (not yet): ENCRYPTION_KEY, APP_URL
+GITHUB_REPO=<owner>/swiggy-bot-agent
+ENCRYPTION_KEY=...  # Fernet key for per-user token encryption
+# (all real values live only in .env — never commit them)
 ```
 
 ### RECURRING MCP ISSUE (every session)
